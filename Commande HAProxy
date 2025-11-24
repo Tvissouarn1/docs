@@ -1,1 +1,142 @@
 
+# Commandes de l'Activité - Répartition de charge HAProxy
+
+## Gestion du cluster (Pacemaker/Corosync)
+### Arrêter des ressources existantes
+```
+crm resource stop serviceWeb
+crm resource stop IPFailover
+```
+
+### Supprimer un groupe de ressources inutile
+```
+crm configure delete servweb
+```
+
+### Redémarrer les ressources nécessaires
+```
+crm resource start IPFailover
+crm resource start serviceWeb
+```
+
+### Cloner la ressource serviceWeb en mode actif/actif
+```
+crm configure clone cServiceWeb serviceWeb
+```
+
+---
+
+## Configuration MySQL (réplication active/active)
+### Sur serv1 : éviter les conflits AUTO_INCREMENT
+Fichier : `/etc/mysql/mariadb.conf.d/50-server.cnf`
+```
+auto_increment_offset=1
+auto_increment_increment=2
+```
+
+### Sur serv2 :
+```
+auto_increment_offset=2
+auto_increment_increment=2
+```
+
+---
+
+## Installation HAProxy
+```
+apt-get update & apt-get install haproxy
+```
+
+---
+
+## Vérification de configuration HAProxy
+```
+haproxy -c -f /etc/haproxy/haproxy.cfg
+```
+
+---
+
+## Redémarrage / rechargement du service HAProxy
+```
+systemctl restart haproxy
+systemctl reload haproxy
+```
+
+---
+
+## Configuration HTTPS HAProxy
+
+### Installation OpenSSL & création certificat
+```
+apt install openssl
+mkdir /etc/haproxy/cert
+cd /etc/haproxy/cert
+openssl genrsa -out privateKey.pem 4096
+openssl req -new -x509 -days 365 -key privateKey.pem -out cert.pem
+cat cert.pem privateKey.pem > sodecaf.pem
+```
+
+---
+
+## Configuration des serveurs backend (exemples)
+### Mode Round Robin simple
+```
+balance roundrobin
+```
+
+### Vérification de l'état des serveurs
+```
+option httpchk HEAD / HTTP/1.0
+```
+
+### Ajout des serveurs
+```
+server serv1 192.168.0.1:80 check
+server serv2 192.168.0.2:80 check
+```
+
+### Pondération des serveurs (serveur 2 moins puissant)
+```
+server web1 192.168.0.1:80 weight 100 check
+server web2 192.168.0.2:80 weight 50 check
+```
+
+---
+
+## Activation des statistiques HAProxy
+```
+stats uri /statsHaproxy
+stats auth root:Btssio2017
+stats refresh 30s
+```
+
+---
+
+## Redirection HTTP → HTTPS
+```
+http-request redirect scheme https unless { ssl_fc }
+```
+
+---
+
+## Commande de test HTTP en terminal (alternance Round Robin)
+```
+lynx http://172.16.0.13
+```
+
+---
+
+## Commandes d'écoute dans HAProxy
+### Port HTTP
+```
+bind 172.16.0.13:80
+```
+
+### Port HTTPS SSL
+```
+bind 172.16.0.13:443 ssl crt /etc/haproxy/cert/sodecaf.pem
+```
+
+---
+
+# Fin du document
